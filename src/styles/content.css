@@ -1,0 +1,26 @@
+/* Only utilities — no @tailwind base (Preflight) which would reset PS's CSS globally */
+@tailwind utilities;
+
+/* Scope all extension styles to our containers */
+#ps-ext-sidebar-root {
+  position: fixed;
+  top: 100px;
+  right: 12px;
+  z-index: 99998;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  color-scheme: dark;
+}
+
+#ps-ext-tooltip-root,
+#ps-ext-tooltip-root * {
+  pointer-events: none;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+/* Reset box-sizing inside our roots only */
+#ps-ext-sidebar-root *,
+#ps-ext-tooltip-root * {
+  box-sizing: border-box;
+}

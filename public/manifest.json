@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "PS Randbats Assistant",
+  "version": "1.0.0",
+  "description": "Damage calc overlay and set tracker for Gen 9 Random Battles on Pokemon Showdown.",
+  "permissions": [],
+  "host_permissions": [
+    "https://play.pokemonshowdown.com/*",
+    "https://*.pokemonshowdown.com/*",
+    "https://*.psim.us/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://*.pokemonshowdown.com/*", "https://*.psim.us/*"],
+      "js": ["page-bridge.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://*.pokemonshowdown.com/*", "https://*.psim.us/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_start"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["*.js", "*.css", "*.json"],
+      "matches": ["https://*.pokemonshowdown.com/*", "https://*.psim.us/*"]
+    }
+  ]
+}
