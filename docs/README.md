@@ -6,6 +6,8 @@ For local installation, see the [project README](../README.md#test-locally--no-b
 
 ## Testing and behavior
 
+- [CHANGELOG.md](CHANGELOG.md): release fixes and upgrade notes.
+
 - [VALIDATION.md](VALIDATION.md): automated test coverage and known verification limits.
 - [LIVE_SMOKE.md](LIVE_SMOKE.md): official-server smoke test, observed stat-boost changes, form checks, and screenshots.
 - [ITEM_RESEARCH.md](ITEM_RESEARCH.md): upstream item rules, reproducible sampling, and limits of inferred item frequencies.

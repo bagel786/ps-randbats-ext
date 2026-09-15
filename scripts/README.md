@@ -6,6 +6,7 @@ Run commands from the repository root after `npm ci`.
 | --- | --- | --- |
 | `package-release.mjs` | Validate built manifest/assets and ZIP an explicit file allowlist | Existing `dist/`; system `zip` command |
 | `check-integration.mjs` | Test built scripts, boosts, room isolation, keyboard tooltips, and cleanup | Existing `dist/`; Playwright Chromium |
+| `check-room-routing.mjs` | Test public/hidden room IDs, both player sides and renames through both built entries | Existing `dist/`; Playwright Chromium |
 | `check-ui.mjs` | Check desktop/narrow layouts and capture preview screenshots | Vite server at `127.0.0.1:5173`; Playwright Chromium |
 | `build-icons.mjs` | Render PNG icons and small promotional image from the SVG mark | Playwright Chromium |
 | `build-randbats-items.cjs` | Refresh sets and empirical item frequencies from full Showdown teams | Separate, built Pokémon Showdown checkout |

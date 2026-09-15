@@ -19,3 +19,18 @@ test('bridge isolates supported rooms, handles frames, and excludes private chat
   ws.dispatchEvent(new MessageEvent('message',{data:'a[malformed'}));
   assert.equal(events.length,2);
 });
+test('bridge relays hidden-room IDs and rename notices without leaking chat', () => {
+  const events: {detail:{room:string,line:string}}[]=[];
+  class FakeSocket extends EventTarget {}
+  const context=vm.createContext({window:{WebSocket:FakeSocket},document:{dispatchEvent:(e:any)=>events.push(e)},CustomEvent});
+  vm.runInContext(transformSync(readFileSync('src/content/page-bridge.ts','utf8'),{loader:'ts'}).code,context);
+  const ws=new context.window.WebSocket();
+  const hidden='battle-gen9randombattle-123-syntheticroomtokenpw';
+  ws.dispatchEvent(new MessageEvent('message',{data:'>'+hidden+'\n|request|{"side":{"id":"p2"}}\n|switch|p1a: Darkrai|Darkrai, L77|100/100\n|c|User|do not forward'}));
+  assert.equal(events.length,2);
+  assert.equal(events[0].detail.room,hidden);
+  ws.dispatchEvent(new MessageEvent('message',{data:`>battle-gen9randombattle-123\n|noinit|rename|${hidden}|Test battle`}));
+  assert.ok(events[2].detail.line.startsWith('|noinit|rename|'));
+  ws.dispatchEvent(new MessageEvent('message',{data:'>battle-gen9ou-123-syntheticroomtokenpw\n|turn|2'}));
+  assert.equal(events.length,3);
+});

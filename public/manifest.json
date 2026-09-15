@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PS Randbats Assistant",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Damage calc overlay and set tracker for Gen 9 Random Battles on Pokemon Showdown.",
   "permissions": [],
   "content_scripts": [

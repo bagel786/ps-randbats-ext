@@ -12,6 +12,8 @@ All calculations run locally. No analytics, extension account, or remote executa
 
 ![Live Showdown sidebar and move-hover estimate](artifacts/live/move-hover-1280x800.png)
 
+**Latest: 1.0.1** fixes the missing sidebar in battles with suffixed room IDs. [Changelog](docs/CHANGELOG.md).
+
 ## Test locally — no build needed
 
 1. Download this repository using **Code → Download ZIP**, then extract it (or clone it).
@@ -21,7 +23,7 @@ All calculations run locally. No analytics, extension account, or remote executa
 5. Disable any older installed copy to avoid duplicate overlays.
 6. Reload Showdown and start a new **Gen 9 Random Battle**.
 
-The checked-in [dist folder](dist/) is the built extension. You can also extract the [release ZIP](release/ps-randbats-assistant-1.0.0.zip) into its own folder and load that folder unpacked.
+The checked-in [dist folder](dist/) is the built extension. You can also extract the [release ZIP](release/ps-randbats-assistant-1.0.1.zip) into its own folder and load that folder unpacked.
 
 After downloading a newer build, click **Reload** on the extension's Chrome card, refresh Showdown, and start a fresh battle. This is a release candidate for local testing; it has not been submitted to the Chrome Web Store.
 
@@ -68,7 +70,7 @@ Visit `http://127.0.0.1:5173/preview/`, or run `npm run test:ui` in another term
 npm run release
 ```
 
-This checks types, runs regression tests, builds the extension, tests the built scripts in Chromium, validates the package, and writes `release/ps-randbats-assistant-1.0.0.zip`. Playwright Chromium must be installed first. Commit updated `dist/` and `release/` alongside source changes so the no-build download stays current.
+This checks types, runs regression tests, builds the extension, tests the built scripts in Chromium, validates the package, and writes `release/ps-randbats-assistant-1.0.1.zip`. Playwright Chromium must be installed first. Commit updated `dist/` and `release/` alongside source changes so the no-build download stays current.
 
 ## Documentation
 

@@ -1,6 +1,6 @@
 {
   "name": "ps-randbats-ext",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "release": "npm run typecheck && npm test && npm run build && npm run test:integration && node scripts/package-release.mjs",
-    "test:integration": "node scripts/check-integration.mjs",
+    "test:integration": "node scripts/check-integration.mjs && node scripts/check-room-routing.mjs",
     "test:ui": "node scripts/check-ui.mjs"
   },
   "dependencies": {

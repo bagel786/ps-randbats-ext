@@ -2,9 +2,14 @@ import { BattleStateTracker, tracker } from '../battle/BattleStateTracker';
 import { initUI } from './ui-injector';
 import '../styles/content.css';
 
+// Match Showdown's public AND hidden room IDs. Do not drop the suffix.
+// Mirrored in page-bridge.ts; sharing a runtime import would split the bundles.
+const BATTLE_ROOM = /^battle-gen9randombattle-\d+(?:-[a-z0-9]+pw)?$/;
 const rooms = new Map<string, BattleStateTracker>();
 function publish(): void {
-  const room = location.pathname.slice(1) || location.hash.slice(1);
+  const path = location.pathname.replace(/^\/|\/$/g, '');
+  const hash = location.hash.replace(/^#\/?/, '');
+  const room = BATTLE_ROOM.test(hash) ? hash : path;
   const current = rooms.get(room);
   if (current) tracker.state = current.state;
   else tracker.reset();
@@ -13,7 +18,20 @@ function publish(): void {
 document.addEventListener('ps-ext-line', (event: Event) => {
   const detail = (event as CustomEvent).detail;
   if (!detail || typeof detail.room !== 'string' || typeof detail.line !== 'string') return;
-  if (!/^battle-gen9randombattle-\d+$/.test(detail.room) || detail.line.length > 100000) return;
+  if (!BATTLE_ROOM.test(detail.room) || detail.line.length > 100000) return;
+  // A privacy change can rename an existing room without replaying a request.
+  // Move its state under the new full ID before normal line processing.
+  const parts = detail.line.split('|');
+  if (parts[1] === 'noinit' && parts[2] === 'rename') {
+    const nextRoom = parts[3];
+    const previous = rooms.get(detail.room);
+    if (BATTLE_ROOM.test(nextRoom) && previous) {
+      rooms.set(nextRoom, previous);
+      rooms.delete(detail.room);
+    }
+    publish();
+    return;
+  }
   let roomTracker = rooms.get(detail.room);
   if (!roomTracker) {
     // Bound memory even when a client keeps completed rooms around.
