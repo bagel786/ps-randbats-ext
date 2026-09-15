@@ -30,6 +30,7 @@ export interface FieldState {
 }
 
 export interface RevealedPokemon {
+  ident?: string;
   species: string;
   level: number;
   gender: string;
@@ -49,6 +50,8 @@ export interface RevealedPokemon {
 }
 
 export interface MyPokemon {
+  battleForm?: string;
+  ident?: string;
   species: string;
   level: number;
   ability: string;
@@ -67,7 +70,14 @@ export interface MyPokemon {
   currentSpeed: number;
 }
 
+export interface ItemSample {
+  item: string;
+  moves: string[];
+  count: number;
+}
+
 export interface PossibleSetMatch {
+  itemSamples?: ItemSample[];
   role: string;
   movepool: string[];
   abilities: string[];

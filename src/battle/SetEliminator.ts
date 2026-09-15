@@ -1,7 +1,8 @@
 import { Generations, toID } from '@smogon/calc';
 import setsJson from '../data/gen9-sets.json';
-import { PossibleSetMatch } from './types';
-import { toId } from './BattleStateTracker';
+import { PossibleSetMatch, ItemSample } from './types';
+import { toID as toId } from '@smogon/calc';
+import { resolveSpeciesId, cosmeticBase } from './species';
 
 const gen = Generations.get(9);
 
@@ -10,14 +11,16 @@ const gen = Generations.get(9);
 // from toId(). Fall back to the dex's baseSpecies when the forme isn't keyed
 // in gen9-sets.json directly.
 function resolveSetsKey(speciesId: string): string | null {
+  speciesId = toID(speciesId);
   if ((setsJson as Record<string, unknown>)[speciesId]) return speciesId;
-  const dexEntry = gen.species.get(toID(speciesId));
+  const dexEntry = gen.species.get(toID(resolveSpeciesId(speciesId)));
   const base = dexEntry?.baseSpecies;
   if (base) {
     const baseId = toID(base);
     if ((setsJson as Record<string, unknown>)[baseId]) return baseId;
   }
-  return null;
+  const cosmetic = cosmeticBase(speciesId);
+  return (setsJson as Record<string, unknown>)[cosmetic] ? cosmetic : null;
 }
 
 interface RawSet {
@@ -26,6 +29,7 @@ interface RawSet {
   abilities: string[];
   teraTypes: string[];
   items?: string[];
+  itemSamples?: ItemSample[];
 }
 
 interface RawSpeciesData {
@@ -47,6 +51,7 @@ export class SetEliminator {
       abilities: [...set.abilities],
       teraTypes: [...set.teraTypes],
       items: set.items ? [...set.items] : [],
+      itemSamples: set.itemSamples,
       eliminated: false,
       eliminatedReason: null,
     }));

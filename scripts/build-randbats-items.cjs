@@ -1,64 +1,41 @@
-// Scrape Pokemon Showdown's getItem logic by sampling randomSet() many times
-// per (species, role) and accumulating the observed items. Output augments
-// src/data/gen9-sets.json with an `items` array per set so the runtime
-// predictor can do a simple lookup instead of reimplementing getItem.
-//
-// Run after building Showdown:
-//   cd ~/Desktop/pokemon-showdown && node build
-// Then:
-//   node scripts/build-randbats-items.js
-//
-// Re-run whenever Showdown's random-battle logic is updated upstream.
-
+// Sample FULL teams so item frequencies include lead and team-context effects.
+// Usage: SHOWDOWN_PATH=/path/to/built/pokemon-showdown node scripts/build-randbats-items.cjs
+// Outputs are deterministic for a fixed upstream commit, seed and team count.
 'use strict';
-
 const fs = require('fs');
 const path = require('path');
-
-const SHOWDOWN = process.env.SHOWDOWN_PATH || path.resolve(__dirname, '../../pokemon-showdown');
-const SETS_PATH = path.resolve(__dirname, '../src/data/gen9-sets.json');
-const ROUNDS_PER_LEAD = 60;
-
-const { Teams } = require(path.join(SHOWDOWN, 'dist/sim/teams'));
-
-const sets = JSON.parse(fs.readFileSync(SETS_PATH, 'utf8'));
-const speciesIds = Object.keys(sets);
-
-let scanned = 0;
-const t0 = Date.now();
-
-for (const speciesId of speciesIds) {
-  const itemsByRole = new Map();
-  for (const isLead of [false, true]) {
-    const generator = Teams.getGenerator('gen9randombattle', [0, 0, 0, 0]);
-    for (let i = 0; i < ROUNDS_PER_LEAD; i++) {
-      generator.setSeed([i, i * 3 + 1, i * 7 + 13, i * 11 + 5]);
-      let result;
-      try {
-        result = generator.randomSet(speciesId, {}, isLead, false);
-      } catch (err) {
-        // Some formes (cosmetic) aren't directly callable; skip silently.
-        break;
-      }
-      if (!result || !result.role) continue;
-      const role = result.role;
-      const item = result.item || '';
-      if (!item) continue;
-      if (!itemsByRole.has(role)) itemsByRole.set(role, new Set());
-      itemsByRole.get(role).add(item);
-    }
+const {execFileSync} = require('child_process');
+const root = process.env.SHOWDOWN_PATH || path.resolve(__dirname,'../../pokemon-showdown');
+const {Teams} = require(path.join(root,'dist/sim/teams'));
+const source = JSON.parse(fs.readFileSync(path.join(root,'data/random-battles/gen9/sets.json'),'utf8'));
+const teamCount = Number(process.env.TEAMS || 20000);
+if (!Number.isInteger(teamCount) || teamCount < 1) throw new Error('TEAMS must be a positive integer');
+const seed = [2026,914,1729,4813];
+const generator = Teams.getGenerator('gen9randombattle', seed);
+const groups = new Map();
+for (let i=0; i<teamCount; i++) {
+  for (const set of generator.randomTeam()) {
+    const key = `${set.speciesId}|${set.role}`;
+    if (!groups.has(key)) groups.set(key,new Map());
+    const moves = [...set.moves].sort();
+    const signature = JSON.stringify([set.item,moves]);
+    const group = groups.get(key);
+    if (!group.has(signature)) group.set(signature,{item:set.item,moves,count:0});
+    group.get(signature).count++;
   }
-
-  for (const set of sets[speciesId].sets) {
-    const observed = itemsByRole.get(set.role);
-    set.items = observed ? [...observed].sort() : [];
-  }
-
-  scanned++;
-  if (scanned % 50 === 0) {
-    console.log(`[${scanned}/${speciesIds.length}] ${speciesId} (${Math.round((Date.now() - t0) / 1000)}s)`);
+  if ((i+1)%2000===0) console.log(`${i+1}/${teamCount} teams`);
+}
+let empty=0;
+for (const [id,pokemon] of Object.entries(source)) {
+  for (const set of pokemon.sets) {
+    const samples = [...(groups.get(`${id}|${set.role}`)?.values() || [])];
+    set.itemSamples = samples.sort((a,b)=>b.count-a.count || a.item.localeCompare(b.item) || a.moves.join().localeCompare(b.moves.join()));
+    set.items = [...new Set(samples.map(s=>s.item))].sort();
+    if (!samples.length) empty++;
   }
 }
-
-fs.writeFileSync(SETS_PATH, JSON.stringify(sets, null, 2) + '\n');
-console.log(`Done in ${Math.round((Date.now() - t0) / 1000)}s. Wrote ${SETS_PATH}.`);
+const dataDir=path.resolve(__dirname,'../src/data');
+const revision=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+fs.writeFileSync(path.join(dataDir,'gen9-sets.json'),JSON.stringify(source,null,2)+'\n');
+fs.writeFileSync(path.join(dataDir,'item-sampling.json'),JSON.stringify({source:'https://github.com/smogon/pokemon-showdown',revision,format:'gen9randombattle',teamCount,seed,method:'Full randomTeam generation; item/moves counts by species and role. Sample frequencies are estimates, not exhaustive probabilities.',unsampledRoles:empty},null,2)+'\n');
+console.log(`Wrote ${Object.keys(source).length} species; ${empty} unsampled roles (kept unknown, never guessed).`);

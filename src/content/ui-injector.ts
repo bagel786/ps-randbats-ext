@@ -59,6 +59,7 @@ function showTooltip(moveName: string, rect: DOMRect): void {
 
 function hideTooltip(): void {
   tooltipRoot?.render(null);
+  currentBtn?.removeAttribute('aria-describedby');
 }
 
 const MOVE_BTN_SELECTOR = 'button[name="chooseMove"], button.movebutton, .movemenu button';
@@ -74,6 +75,22 @@ let listenersAttached = false;
 function attachMoveHoverListeners(): void {
   if (listenersAttached) return;
   listenersAttached = true;
+  document.addEventListener('focusin', e => {
+    const btn = findMoveBtn(e.target);
+    if (!btn) return;
+    currentBtn = btn;
+    const name = getMoveNameFromButton(btn);
+    if (name) { btn.setAttribute('aria-describedby', 'ps-ext-tooltip'); showTooltip(name, btn.getBoundingClientRect()); }
+  });
+  document.addEventListener('focusout', () => { hideTooltip(); currentBtn = null; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { hideTooltip(); currentBtn = null; } });
+  tracker.addEventListener('stateChange', () => {
+    if (!currentBtn?.isConnected || !tracker.state.opponentActive) { hideTooltip(); currentBtn = null; return; }
+    const name = getMoveNameFromButton(currentBtn);
+    if (name) showTooltip(name, currentBtn.getBoundingClientRect());
+  });
+  window.addEventListener('resize', () => { hideTooltip(); currentBtn = null; });
+  document.addEventListener('scroll', () => { hideTooltip(); currentBtn = null; }, true);
   document.addEventListener(
     'mouseover',
     (e) => {

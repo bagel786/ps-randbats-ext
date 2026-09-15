@@ -1,0 +1,14 @@
+{
+  "source": "https://github.com/smogon/pokemon-showdown",
+  "revision": "c23d2e942c9c0daadb13a7162a385bf78e3c9353",
+  "format": "gen9randombattle",
+  "teamCount": 20000,
+  "seed": [
+    2026,
+    914,
+    1729,
+    4813
+  ],
+  "method": "Full randomTeam generation; item/moves counts by species and role. Sample frequencies are estimates, not exhaustive probabilities.",
+  "unsampledRoles": 0
+}

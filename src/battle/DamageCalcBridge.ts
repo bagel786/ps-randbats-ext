@@ -2,7 +2,8 @@ import { calculate, Field, Generations, Move, Pokemon, Side, toID } from '@smogo
 import type { State } from '@smogon/calc';
 import { BattleState, CalcResult, MyPokemon, RevealedPokemon } from './types';
 import { predictAbility } from './abilityPrediction';
-import { predictItem } from './itemPrediction';
+import { predictItem, describeItemPrediction } from './itemPrediction';
+import { resolveSpeciesId } from './species';
 
 const gen = Generations.get(9);
 
@@ -50,7 +51,7 @@ function koLabel(chance: number): string {
   if (chance >= 0.875) return '7/8 OHKO';
   if (chance >= 0.5)   return '~50% OHKO';
   if (chance > 0)      return `${Math.round(chance * 100)}% OHKO`;
-  return '2HKO+';
+  return 'No OHKO';
 }
 
 function formatBoost(stat: string, stage: number): string {
@@ -206,7 +207,7 @@ const REGIONAL_FORME_PREFIX: Record<string, string> = {
 };
 
 export function formatSpeciesName(speciesId: string): string {
-  const canonical = gen.species.get(toID(speciesId))?.name ?? speciesId;
+  const canonical = gen.species.get(toID(resolveSpeciesId(speciesId)))?.name ?? speciesId;
   const m = canonical.match(/^(.+)-(Alola|Galar|Hisui|Paldea)$/);
   return m ? `${REGIONAL_FORME_PREFIX[m[2]]} ${m[1]}` : canonical;
 }
@@ -257,7 +258,7 @@ function runCalc(
     // single-hit number[], fixed multi-hit number[] length<16 where each entry
     // is one hit, and true multi-hit number[][]) into a summed [min, max].
     const [minDmg, maxDmg] = result.range();
-    if (maxDmg === 0) return null;
+    if (move.category === 'Status') return null;
 
     const maxHp = result.defender.maxHP();
     const percentMin = Math.floor((minDmg / maxHp) * 100);
@@ -270,6 +271,7 @@ function runCalc(
     // to a coarse bracket using the summed range, since each "entry" no
     // longer represents an equally-weighted damage roll.
     const raw = result.damage;
+    if (Array.isArray(raw) && (Array.isArray(raw[0]) || raw.length !== 16)) notes.push('Multi-hit KO chance is approximate');
     let koChance: number;
     if (Array.isArray(raw) && raw.length === 16 && typeof raw[0] === 'number') {
       const rolls = raw as number[];
@@ -290,7 +292,7 @@ function runCalc(
       koLabel: koLabel(koChance),
       modifiers: extractModifiers(attacker, defender, moveName, field),
       notes,
-      effectiveness,
+      effectiveness: maxDmg === 0 ? 0 : effectiveness,
     };
   } catch (err) {
     console.warn('[PSExt/calc] failed for', moveName, err);
@@ -298,20 +300,10 @@ function runCalc(
   }
 }
 
-// Cosmetic formes share base stats with the base species but aren't in
-// @smogon/calc's species data (e.g. Tatsugiri-Stretchy, Maushold-Four,
-// Squawkabilly-Yellow, Sinistea-Antique). Fall back to the part before the
-// first hyphen, but only when the full ID truly isn't in the dex.
-function resolveSpeciesId(id: string): string {
-  if (gen.species.get(toID(id))) return id;
-  const base = id.split('-')[0];
-  return base && gen.species.get(toID(base)) ? base : id;
-}
-
 export function calcDamage(state: BattleState, moveName: string): CalcResult | null {
   const me = state.myTeam.find((p) => p.active);
   const opp = state.opponentActive;
-  if (!me || !opp) return null;
+  if (!me || !opp || me.hpPercent <= 0 || opp.hpPercent <= 0) return null;
 
   const notes: string[] = [];
   let abilityOverride: string | undefined;
@@ -325,12 +317,12 @@ export function calcDamage(state: BattleState, moveName: string): CalcResult | n
     }
   }
   let itemOverride: string | undefined;
-  if (!opp.item) {
+  if (!opp.itemConfirmed && !opp.item) {
     const cat = gen.moves.get(toID(moveName))?.category ?? 'Status';
-    const pred = predictItem(state.possibleSets, cat);
+    const pred = predictItem(state.possibleSets, cat, opp.revealedMoves, opp.choiceConfirmed);
     if (pred) {
       itemOverride = pred.name;
-      notes.push(`${pred.confidence === 'certain' ? 'predicted' : 'assumed'} item: ${pred.name}`);
+      notes.push(describeItemPrediction(pred));
     } else {
       notes.push('item unknown');
     }
@@ -351,7 +343,7 @@ export function calcDamage(state: BattleState, moveName: string): CalcResult | n
 export function calcIncomingDamage(state: BattleState, moveName: string): CalcResult | null {
   const me = state.myTeam.find((p) => p.active);
   const opp = state.opponentActive;
-  if (!me || !opp) return null;
+  if (!me || !opp || me.hpPercent <= 0 || opp.hpPercent <= 0) return null;
 
   const notes: string[] = [];
   let abilityOverride: string | undefined;
@@ -365,25 +357,13 @@ export function calcIncomingDamage(state: BattleState, moveName: string): CalcRe
     }
   }
 
-  // Choice lock confirmed but the specific Choice item is still unknown:
-  // pick Band for physical moves and Specs for special, since Choice Scarf
-  // doesn't change damage. Choice lock beats the generic prediction.
   let inferredItem: string | undefined;
   const moveCategory = gen.moves.get(toID(moveName))?.category ?? 'Status';
-  if (!opp.item && opp.choiceConfirmed) {
-    if (moveCategory === 'Physical') {
-      inferredItem = 'Choice Band';
-      notes.push('assumed Choice Band');
-    } else if (moveCategory === 'Special') {
-      inferredItem = 'Choice Specs';
-      notes.push('assumed Choice Specs');
-    }
-  }
-  if (!opp.item && !inferredItem) {
-    const pred = predictItem(state.possibleSets, moveCategory);
+  if (!opp.itemConfirmed && !opp.item && !inferredItem) {
+    const pred = predictItem(state.possibleSets, moveCategory, opp.revealedMoves, opp.choiceConfirmed);
     if (pred) {
       inferredItem = pred.name;
-      notes.push(`${pred.confidence === 'certain' ? 'predicted' : 'assumed'} item: ${pred.name}`);
+      notes.push(describeItemPrediction(pred));
     } else {
       notes.push('opp item unknown');
     }
@@ -406,6 +386,7 @@ function buildMyPokemon(me: MyPokemon): Pokemon {
     ability: me.ability || undefined,
     item: me.item || undefined,
     nature: me.nature,
+    curHP: Math.max(1, Math.round(new Pokemon(gen, resolveSpeciesId(me.species), { level: me.level, evs: me.evs, ivs: me.ivs }).maxHP() * me.hpPercent / 100)),
     evs: me.evs,
     ivs: me.ivs,
     boosts: me.boosts,
@@ -422,8 +403,9 @@ function buildOpponentPokemon(
   return new Pokemon(gen, resolveSpeciesId(opp.species), {
     level: opp.level,
     ability: opp.ability || abilityOverride || undefined,
-    item: opp.item || itemOverride || undefined,
+    item: opp.itemConfirmed ? (opp.item ?? '') : (opp.item ?? itemOverride ?? ''),
     nature: 'Serious',
+    curHP: Math.max(1, Math.round(new Pokemon(gen, resolveSpeciesId(opp.species), { level: opp.level, evs: RANDBATS_EVS, ivs: RANDBATS_IVS }).maxHP() * opp.hpPercent / 100)),
     evs: RANDBATS_EVS,
     ivs: RANDBATS_IVS,
     boosts: opp.boosts,

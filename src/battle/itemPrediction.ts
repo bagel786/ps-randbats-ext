@@ -1,67 +1,48 @@
+import { toID } from '@smogon/calc';
 import { PossibleSetMatch } from './types';
-
 export interface ItemPrediction {
   name: string;
   confidence: 'certain' | 'guess';
+  sampleSize?: number;
+  frequency?: number;
 }
-
-// Rank items by expected damage impact for the move category being calc'd.
-// Higher = more impactful, picked first when multiple sets disagree.
-const RANK_PHYSICAL: Record<string, number> = {
-  'Choice Band': 100,
-  'Life Orb': 90,
-  'Choice Scarf': 60,
-  'Expert Belt': 50,
-  'Black Glasses': 40, 'Charcoal': 40, 'Hard Stone': 40, 'Magnet': 40,
-  'Metal Coat': 40, 'Miracle Seed': 40, 'Mystic Water': 40, 'Never-Melt Ice': 40,
-  'Sharp Beak': 40, 'Soft Sand': 40, 'Spell Tag': 40,
-};
-const RANK_SPECIAL: Record<string, number> = {
-  'Choice Specs': 100,
-  'Life Orb': 90,
-  'Choice Scarf': 60,
-  'Expert Belt': 50,
-  'Wise Glasses': 40,
-};
-const RANK_DEFAULT: Record<string, number> = {
-  'Leftovers': 10,
-  'Heavy-Duty Boots': 9,
-  'Assault Vest': 8,
-  'Rocky Helmet': 7,
-};
-
-function rankFor(item: string, category: 'Physical' | 'Special' | 'Status'): number {
-  if (category === 'Physical' && item in RANK_PHYSICAL) return RANK_PHYSICAL[item];
-  if (category === 'Special' && item in RANK_SPECIAL) return RANK_SPECIAL[item];
-  return RANK_DEFAULT[item] ?? 1;
-}
-
-// Predict the opponent's item from the union of possible sets. If one item
-// across all remaining sets, return it as 'certain'. If multiple candidates,
-// pick the one most likely to affect the current calc (matching the move
-// category for offensive items, else Leftovers tier).
+/** Conditional empirical item frequency, never a damage-maximizing guess.
+ * Counts come from full Showdown teams. A sampled singleton is not certainty.
+ * Empty item is valid (e.g. Acrobatics), distinct from no prediction.
+ */
 export function predictItem(
   possibleSets: PossibleSetMatch[],
-  category: 'Physical' | 'Special' | 'Status',
+  _category: 'Physical' | 'Special' | 'Status',
+  revealedMoves: string[] = [],
+  choiceConfirmed = false,
 ): ItemPrediction | null {
-  const active = possibleSets.filter((s) => !s.eliminated);
-  if (active.length === 0) return null;
-
-  const union = new Set<string>();
-  for (const set of active) for (const it of set.items) union.add(it);
-  if (union.size === 0) return null;
-
-  if (union.size === 1) {
-    return { name: union.values().next().value as string, confidence: 'certain' };
-  }
-  let best = '';
-  let bestRank = -1;
-  for (const item of union) {
-    const r = rankFor(item, category);
-    if (r > bestRank) {
-      bestRank = r;
-      best = item;
+  const active = possibleSets.filter(s => !s.eliminated);
+  const counts = new Map<string,number>();
+  const moves = revealedMoves.map(toID);
+  let sampled = false;
+  for (const set of active) {
+    if (set.itemSamples) {
+      sampled = true;
+      for (const sample of set.itemSamples) {
+        if (!moves.every(m => sample.moves.includes(m))) continue;
+        if (choiceConfirmed && !sample.item.startsWith('Choice ')) continue;
+        counts.set(sample.item, (counts.get(sample.item) ?? 0) + sample.count);
+      }
     }
   }
-  return { name: best, confidence: 'guess' };
+  if (sampled) {
+    const total = [...counts.values()].reduce((a,b)=>a+b,0);
+    // No matching sample is a coverage gap, not permission to pick a stronger item.
+    if (!total) return null;
+    const [name,count] = [...counts.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]))[0];
+    return {name, confidence:'guess', frequency:count/total, sampleSize:total};
+  }
+  // Legacy fixtures or data without frequencies: only a singleton is usable.
+  const items = new Set(active.flatMap(s=>s.items).filter(i=>!choiceConfirmed || i.startsWith('Choice ')));
+  return items.size === 1 ? {name:[...items][0],confidence:'guess'} : null;
+}
+export function describeItemPrediction(pred: ItemPrediction): string {
+  const item = pred.name || 'no item';
+  return pred.frequency === undefined ? `assumed item: ${item}`
+    : `assumed item: ${item} (${Math.round(pred.frequency * 100)}% of ${pred.sampleSize} matching samples)`;
 }

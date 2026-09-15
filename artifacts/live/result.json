@@ -1,0 +1,18 @@
+{
+  "url": "https://play.pokemonshowdown.com/battle-gen9randombattle-2681481932",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "sidebarWidth": 264,
+  "opponent": "Blaziken",
+  "move": "Close Combat",
+  "before": "62–75%",
+  "after": "125–148%",
+  "boost": "+2 Atk",
+  "liveFormChange": "Morpeko → Morpeko-Hangry",
+  "keyboardCollapse": true,
+  "roomSwitchRestoredBoosts": true,
+  "gameEndClearedBoard": true,
+  "notes": "Official server unrated challenge between two temporary test accounts; actual unpacked MV3 extension loaded in Chromium."
+}

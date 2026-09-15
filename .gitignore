@@ -1,4 +1,6 @@
 node_modules/
-dist/
 .DS_Store
-Icon?
+/Icon?
+
+# Local dependencies and machine-specific files only.
+# dist/ and release/ are tracked for no-build local testing.

@@ -9,6 +9,7 @@ import {
   StatBoosts,
 } from './types';
 import { SetEliminator } from './SetEliminator';
+import { speciesFamily } from './species';
 
 const gen9 = Generations.get(9);
 
@@ -109,7 +110,7 @@ function parseDetails(details: string): { species: string; level: number; gender
 }
 
 // Parse [from] item/ability and optional [of] tags from a protocol line
-function parseFromTag(line: string): { kind: 'item' | 'ability' | 'move'; name: string; of?: string } | null {
+function parseFromTag(line: string): { kind: 'item' | 'ability' | 'move'; name: string; of?: string; ofSide?: Side } | null {
   const fromMatch = line.match(/\[from\] (item|ability|move): ([^|[\]]+)/);
   const ofMatch = line.match(/\[of\] ([^|[\]]+)/);
   if (!fromMatch) return null;
@@ -117,6 +118,7 @@ function parseFromTag(line: string): { kind: 'item' | 'ability' | 'move'; name: 
     kind: fromMatch[1] as 'item' | 'ability' | 'move',
     name: fromMatch[2].trim(),
     of: ofMatch ? parsePokemonId(ofMatch[1].trim()).species : undefined,
+    ofSide: ofMatch ? parsePokemonId(ofMatch[1].trim()).side : undefined,
   };
 }
 
@@ -141,13 +143,15 @@ const IGNORED_VERBS = new Set([
   '-cureteam', '-sethp',
 ]);
 
-class BattleStateTracker extends EventTarget {
+export class BattleStateTracker extends EventTarget {
   state: BattleState = defaultState();
 
   private eliminator = new SetEliminator();
+  private pendingLines: string[] = [];
   private warnedVerbs = new Set<string>();
 
   reset(): void {
+    this.pendingLines = [];
     this.state = defaultState();
     this.eliminator = new SetEliminator();
   }
@@ -156,6 +160,10 @@ class BattleStateTracker extends EventTarget {
     if (!line.startsWith('|')) return;
     const parts = line.split('|');
     const type = parts[1];
+    if (this.state.playerSide === null && !['request', 'init', 'win', 'tie', 'deinit'].includes(type)) {
+      if (this.pendingLines.length < 10000) this.pendingLines.push(line);
+      return;
+    }
 
     switch (type) {
       case 'init':
@@ -179,12 +187,21 @@ class BattleStateTracker extends EventTarget {
       case '-ability':     this.handleAbility(parts); break;
       case '-damage':
       case '-heal':        this.handleDamageHeal(parts, line); break;
+      case '-sethp':
+        this.handleDamageHeal(['', '-heal', parts[2], parts[3]], '');
+        if (parts[4]?.startsWith('p')) this.handleDamageHeal(['', '-heal', parts[4], parts[5]], '');
+        break;
       case '-status':      this.handleStatus(parts); break;
       case '-curestatus':  this.handleCureStatus(parts); break;
       case '-boost':       this.handleBoost(parts, 1); break;
       case '-unboost':     this.handleBoost(parts, -1); break;
       case '-setboost':    this.handleSetBoost(parts); break;
       case '-clearboost':  this.handleClearBoost(parts); break;
+      case '-clearpositiveboost':
+      case '-clearnegativeboost':
+      case '-invertboost':
+      case '-copyboost':
+      case '-swapboost': this.handleBoostOperation(parts); break;
       case '-clearallboost': this.handleClearAllBoost(); break;
       case '-terastallize': this.handleTera(parts); break;
       case '-weather':     this.handleWeather(parts); break;
@@ -220,23 +237,24 @@ class BattleStateTracker extends EventTarget {
         // arrive via |-boost|/|-terastallize|. Preserve those from the
         // previous myTeam entry (keyed by species) so a Bulk Up doesn't get
         // wiped on the next turn.
-        const prev = new Map(this.state.myTeam.map((p) => [p.species, p]));
+        const prev = new Map(this.state.myTeam.map((p) => [p.ident ?? p.species, p]));
 
         this.state.myTeam = (req.side.pokemon as Record<string, unknown>[]).map((p) => {
           const details = parseDetails((p['details'] as string) ?? '');
           const stats = p['stats'] as Record<string, number> | undefined;
           const item = normalizeItemName((p['item'] as string) ?? '');
-          const ability = normalizeAbilityName((p['baseAbility'] as string) ?? '');
+          const carryover = prev.get((p['ident'] as string) ?? details.species);
+          const ability = normalizeAbilityName((p['ability'] as string) ?? carryover?.ability ?? (p['baseAbility'] as string) ?? '');
           const nature = (p['nature'] as string) ?? 'Serious';
           const moves = (p['moves'] as string[]) ?? [];
           const active = !!(p['active'] as boolean);
           const hpStr = (p['condition'] as string) ?? '100/100';
-          const hpMatch = hpStr.match(/(\d+)\/(\d+)/);
-          const hpPercent = hpMatch ? Math.round((parseInt(hpMatch[1]) / parseInt(hpMatch[2])) * 100) : 100;
-          const carryover = prev.get(details.species);
+          const hpPercent = this.parseHpPercent(hpStr);
 
           return {
-            species: details.species,
+            ident: p['ident'] as string | undefined,
+            species: active && carryover?.battleForm ? carryover.battleForm : details.species,
+            battleForm: active ? carryover?.battleForm : undefined,
             level: details.level,
             ability,
             item,
@@ -245,39 +263,24 @@ class BattleStateTracker extends EventTarget {
             ivs: { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 },
             moves,
             boosts: carryover?.boosts ?? defaultBoosts(),
-            status: null,
+            status: hpStr.match(/\b(par|brn|psn|tox|slp|frz)\b/)?.[1] ?? null,
             hpPercent,
-            teraType: carryover?.teraType ?? null,
-            terastallized: carryover?.terastallized ?? false,
+            teraType: (p['terastallized'] as string) || (p['teraType'] as string) || carryover?.teraType || null,
+            terastallized: p['terastallized'] !== undefined ? !!p['terastallized'] : (carryover?.terastallized ?? false),
             active,
             baseStats: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
             currentSpeed: stats?.['spe'] ?? 0,
           } satisfies MyPokemon;
         });
 
-        if (wasUnknown) this.reconcileSidesAfterRequest();
+        if (wasUnknown) {
+          const pending = this.pendingLines;
+          this.pendingLines = [];
+          for (const line of pending) this.processLine(line);
+        }
       }
     } catch {
       // Malformed request JSON — ignore
-    }
-  }
-
-  // Switches that arrive before |request| can't be classified by side, so they
-  // all fall through to the opponent branch. Once playerSide is known, prune
-  // any opponentSeen entries that match my own team and recompute opponentActive.
-  private reconcileSidesAfterRequest(): void {
-    if (this.state.myTeam.length === 0) return;
-    const mine = new Set(this.state.myTeam.map((p) => p.species));
-    const before = this.state.opponentSeen.length;
-    this.state.opponentSeen = this.state.opponentSeen.filter((p) => !mine.has(p.species));
-    const removedAny = this.state.opponentSeen.length !== before;
-    const activeIsMine = this.state.opponentActive && mine.has(this.state.opponentActive.species);
-
-    if (activeIsMine || (removedAny && !this.state.opponentSeen.includes(this.state.opponentActive!))) {
-      this.state.opponentActive = this.state.opponentSeen[this.state.opponentSeen.length - 1] ?? null;
-      this.state.possibleSets = this.state.opponentActive
-        ? this.eliminator.init(this.state.opponentActive.species)
-        : [];
     }
   }
 
@@ -286,20 +289,25 @@ class BattleStateTracker extends EventTarget {
     // position-prefixed nickname (e.g. "p2a: Slowbro"). Otherwise forme'd
     // mons get a base-species ID that won't match myTeam during reconcile.
     const { side } = parsePokemonId(parts[2] ?? '');
+    const ident = (parts[2] ?? '').replace(/^(p[12])[a-z]:/, '$1:');
     const { species, level, gender } = parseDetails(parts[3] ?? '');
     const hpStr = parts[4] ?? '100/100';
     const hpPercent = this.parseHpPercent(hpStr);
+    const status = hpStr.match(/\b(par|brn|psn|tox|slp|frz)\b/)?.[1] ?? null;
 
     if (side === this.state.playerSide) {
-      this.state.myTeam.forEach((p) => { p.active = p.species === species; });
-      const me = this.state.myTeam.find((p) => p.species === species);
+      const me = this.state.myTeam.find(p => p.ident === ident) ?? this.state.myTeam.find(p => speciesFamily(p.species) === speciesFamily(species));
+      this.state.myTeam.forEach(p => { p.active = p === me; });
       if (me) {
+        me.species = species;
+        me.battleForm = undefined;
         me.hpPercent = hpPercent;
+        me.status = status;
         me.boosts = defaultBoosts();
       }
     } else {
       // Opponent switch
-      const existing = this.state.opponentSeen.find((p) => p.species === species);
+      const existing = this.state.opponentSeen.find(p => speciesFamily(p.species) === speciesFamily(species) && (!p.ident || p.ident === ident));
       let active: RevealedPokemon;
       if (existing) {
         existing.hpPercent = hpPercent;
@@ -310,6 +318,12 @@ class BattleStateTracker extends EventTarget {
         active.hpPercent = hpPercent;
         this.state.opponentSeen.push(active);
       }
+      active.ident = ident;
+      active.species = species;
+      active.status = status;
+      active.lastMove = null;
+      active.consecutiveSameMove = 0;
+      active.volatiles = [];
       this.state.opponentActive = active;
       // Re-init then replay everything we already know about this mon
       let sets = this.eliminator.init(species);
@@ -392,18 +406,20 @@ class BattleStateTracker extends EventTarget {
     if (side !== this.state.playerSide && this.state.opponentActive) {
       this.state.opponentActive.item = item;
       this.state.opponentActive.itemConfirmed = true;
+    } else if (side === this.state.playerSide) {
+      const me = this.state.myTeam.find(p => p.active);
+      if (me) me.item = item;
     }
 
     // If [from] ability: X with [of] OTHER, OTHER's ability is X.
     // e.g. Clefable's Life Orb revealed by Furret's Frisk reveals Furret has Frisk.
     const fromTag = parseFromTag(fullLine);
     if (fromTag?.kind === 'ability' && fromTag.of) {
-      const sourceSpecies = fromTag.of;
-      const opp = this.state.opponentSeen.find((p) => p.species === sourceSpecies);
+      const opp = fromTag.ofSide !== this.state.playerSide ? this.state.opponentActive : null;
       if (opp && !opp.ability) {
         const abilityName = normalizeAbilityName(fromTag.name);
         opp.ability = abilityName;
-        if (this.state.opponentActive?.species === sourceSpecies) {
+        if (this.state.opponentActive === opp) {
           this.state.possibleSets = this.eliminator.revealAbility(
             this.state.possibleSets,
             abilityName,
@@ -422,6 +438,10 @@ class BattleStateTracker extends EventTarget {
     if (side !== this.state.playerSide && this.state.opponentActive) {
       this.state.opponentActive.item = null;
       this.state.opponentActive.itemConfirmed = true;
+      this.state.opponentActive.choiceConfirmed = false;
+    } else {
+      const me = this.state.myTeam.find(p => p.active);
+      if (me) me.item = '';
     }
   }
 
@@ -440,17 +460,25 @@ class BattleStateTracker extends EventTarget {
     // mis-eliminate sets, so skip the elimination path here.
     const fromTag = parseFromTag(fullLine);
     if (fromTag) {
+      if (side === this.state.playerSide) {
+        const me = this.state.myTeam.find(p => p.active);
+        if (me) me.ability = ability;
+      } else if (this.state.opponentActive) this.state.opponentActive.ability = ability;
       // Trace: opponent now has the copied ability — record but don't eliminate
       if (side !== this.state.playerSide && this.state.opponentActive) {
         // If they Traced something, we know their original ability is Trace
         if (fromTag.kind === 'ability' && toId(fromTag.name) === 'trace') {
-          this.state.opponentActive.ability = 'Trace';
+          this.state.opponentActive.ability = ability;
           this.state.possibleSets = this.eliminator.revealAbility(this.state.possibleSets, 'Trace');
         }
       }
       return;
     }
 
+    if (side === this.state.playerSide) {
+      const me = this.state.myTeam.find(p => p.active);
+      if (me) me.ability = ability;
+    }
     if (side !== this.state.playerSide && this.state.opponentActive) {
       this.state.opponentActive.ability = ability;
       this.state.possibleSets = this.eliminator.revealAbility(this.state.possibleSets, ability);
@@ -476,7 +504,7 @@ class BattleStateTracker extends EventTarget {
     if (fromTag?.kind === 'item') {
       if (fromTag.of) {
         // e.g. Rocky Helmet — [of] points to who owns the item
-        const opp = this.state.opponentSeen.find((p) => p.species === fromTag.of);
+        const opp = fromTag.ofSide !== this.state.playerSide ? this.state.opponentActive : null;
         if (opp) {
           opp.item = fromTag.name;
           opp.itemConfirmed = true;
@@ -536,6 +564,27 @@ class BattleStateTracker extends EventTarget {
     }
   }
 
+  private handleBoostOperation(parts: string[]): void {
+    const targetFor = (id: string) => parsePokemonId(id).side === this.state.playerSide
+      ? this.state.myTeam.find(p => p.active) : this.state.opponentActive;
+    const target = targetFor(parts[2] ?? '');
+    if (!target) return;
+    const source = targetFor(parts[3] ?? '');
+    const stats = (parts[4] && !parts[4].startsWith('[') ? parts[4].split(',').map(s => s.trim()) : Object.keys(target.boosts)) as (keyof StatBoosts)[];
+    for (const stat of stats) {
+      if (!(stat in target.boosts)) continue;
+      const value = target.boosts[stat];
+      if (parts[1] === '-clearpositiveboost' && value > 0) target.boosts[stat] = 0;
+      if (parts[1] === '-clearnegativeboost' && value < 0) target.boosts[stat] = 0;
+      if (parts[1] === '-invertboost') target.boosts[stat] = -value;
+      if (parts[1] === '-copyboost' && source) target.boosts[stat] = source.boosts[stat];
+      if (parts[1] === '-swapboost' && source) {
+        target.boosts[stat] = source.boosts[stat];
+        source.boosts[stat] = value;
+      }
+    }
+  }
+
   private handleClearBoost(parts: string[]): void {
     if (this.state.playerSide === null) return;
     const { side } = parsePokemonId(parts[2] ?? '');
@@ -589,8 +638,8 @@ class BattleStateTracker extends EventTarget {
     const condition = toId(parts[3] ?? '');
     const sc = this.state.field[sideId];
     if (condition.includes('stealthrock')) sc.stealthRock = true;
-    else if (condition.includes('spikes')) sc.spikes = Math.min(3, sc.spikes + 1);
     else if (condition.includes('toxicspikes')) sc.toxicSpikes = Math.min(2, sc.toxicSpikes + 1);
+    else if (condition.includes('spikes')) sc.spikes = Math.min(3, sc.spikes + 1);
     else if (condition.includes('reflect')) sc.reflect = true;
     else if (condition.includes('lightscreen')) sc.lightScreen = true;
     else if (condition.includes('auroraveil')) sc.auroraVeil = true;
@@ -601,7 +650,10 @@ class BattleStateTracker extends EventTarget {
     const sideId = (parts[2] ?? '').startsWith('p1') ? 'p1' : 'p2';
     const condition = toId(parts[3] ?? '');
     const sc = this.state.field[sideId];
-    if (condition.includes('reflect')) sc.reflect = false;
+    if (condition.includes('stealthrock')) sc.stealthRock = false;
+    else if (condition.includes('toxicspikes')) sc.toxicSpikes = 0;
+    else if (condition.includes('spikes')) sc.spikes = 0;
+    else if (condition.includes('reflect')) sc.reflect = false;
     else if (condition.includes('lightscreen')) sc.lightScreen = false;
     else if (condition.includes('auroraveil')) sc.auroraVeil = false;
     else if (condition.includes('tailwind')) sc.tailwind = false;
@@ -612,14 +664,21 @@ class BattleStateTracker extends EventTarget {
     const { side } = parsePokemonId(parts[2] ?? '');
     const { species } = parseDetails(parts[3] ?? '');
     if (side !== this.state.playerSide && this.state.opponentActive) {
-      // Forme often comes with item/ability/movepool divergence (e.g. Ogerpon).
-      // Drop prior revelations so we don't carry impossible inferences forward.
-      this.state.opponentActive.species = species;
-      this.state.opponentActive.revealedMoves = [];
-      this.state.opponentActive.item = null;
-      this.state.opponentActive.itemConfirmed = false;
-      this.state.opponentActive.ability = null;
-      this.state.possibleSets = this.eliminator.init(species);
+      const opp = this.state.opponentActive;
+      opp.species = species;
+      const from = parseFromTag(parts.join('|'));
+      if (from?.kind === 'ability') opp.ability = normalizeAbilityName(from.name);
+      let sets = this.eliminator.init(species);
+      for (const move of opp.revealedMoves) sets = this.eliminator.revealMove(sets, move);
+      this.state.possibleSets = sets;
+    } else if (side === this.state.playerSide) {
+      const me = this.state.myTeam.find(p => p.active);
+      if (me) {
+        me.species = species;
+        me.battleForm = parts[1] === '-formechange' ? species : undefined;
+        const from = parseFromTag(parts.join('|'));
+        if (from?.kind === 'ability') me.ability = normalizeAbilityName(from.name);
+      }
     }
   }
 
@@ -648,7 +707,7 @@ class BattleStateTracker extends EventTarget {
     if (hpStr === '0' || hpStr === '0 fnt') return 0;
     const match = hpStr.match(/(\d+)\/(\d+)/);
     if (!match) return 100;
-    return Math.round((parseInt(match[1]) / parseInt(match[2])) * 100);
+    return Number(match[2]) > 0 ? Math.min(100, Math.max(0, (Number(match[1]) / Number(match[2])) * 100)) : 0;
   }
 }
 

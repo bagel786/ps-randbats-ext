@@ -1,0 +1,179 @@
+{
+  "sourceRevision": "c23d2e942c9c0daadb13a7162a385bf78e3c9353",
+  "description": "Actual upstream Battle log and side request snapshots; custom battle used solely to force Minior form transitions.",
+  "stages": [
+    {
+      "lines": [
+        "|t:|1789446310",
+        "|gametype|singles",
+        "|player|p1|Minior test||",
+        "|player|p2|Test target||",
+        "|gen|9",
+        "|tier|[Gen 9] Custom Game",
+        "|clearpoke",
+        "|poke|p1|Minior-Blue, L80|",
+        "|poke|p2|Blissey, L80, F|",
+        "|teampreview",
+        "|",
+        "|t:|1789446310",
+        "|teamsize|p1|1",
+        "|teamsize|p2|1",
+        "|start",
+        "|split|p1",
+        "|switch|p1a: Minior|Minior-Blue, L80|210/210",
+        "|switch|p1a: Minior|Minior-Blue, L80|210/210",
+        "|split|p2",
+        "|switch|p2a: Blissey|Blissey, L80, F|522/522",
+        "|switch|p2a: Blissey|Blissey, L80, F|522/522",
+        "|-formechange|p1a: Minior|Minior-Meteor||[from] ability: Shields Down",
+        "|turn|1"
+      ],
+      "request": {
+        "side": {
+          "name": "Minior test",
+          "id": "p1",
+          "pokemon": [
+            {
+              "ident": "p1: Minior",
+              "details": "Minior-Blue, L80",
+              "condition": "210/210",
+              "active": true,
+              "stats": {
+                "atk": 125,
+                "def": 189,
+                "spa": 125,
+                "spd": 189,
+                "spe": 125
+              },
+              "moves": [
+                "shellsmash",
+                "acrobatics",
+                "substitute",
+                "protect"
+              ],
+              "baseAbility": "shieldsdown",
+              "item": "whiteherb",
+              "pokeball": "pokeball",
+              "ability": "shieldsdown",
+              "commanding": false,
+              "reviving": false,
+              "teraType": "Rock",
+              "terastallized": ""
+            }
+          ]
+        }
+      },
+      "actualSpecies": "miniormeteor"
+    },
+    {
+      "lines": [
+        "|",
+        "|t:|1789446310",
+        "|move|p1a: Minior|Shell Smash|p1a: Minior",
+        "|-unboost|p1a: Minior|def|1",
+        "|-unboost|p1a: Minior|spd|1",
+        "|-boost|p1a: Minior|atk|2",
+        "|-boost|p1a: Minior|spa|2",
+        "|-boost|p1a: Minior|spe|2",
+        "|-enditem|p1a: Minior|White Herb",
+        "|-clearnegativeboost|p1a: Minior|[silent]",
+        "|move|p2a: Blissey|Seismic Toss|p1a: Minior",
+        "|split|p1",
+        "|-damage|p1a: Minior|130/210",
+        "|-damage|p1a: Minior|130/210",
+        "|",
+        "|upkeep",
+        "|turn|2"
+      ],
+      "request": {
+        "side": {
+          "name": "Minior test",
+          "id": "p1",
+          "pokemon": [
+            {
+              "ident": "p1: Minior",
+              "details": "Minior-Blue, L80",
+              "condition": "130/210",
+              "active": true,
+              "stats": {
+                "atk": 125,
+                "def": 189,
+                "spa": 125,
+                "spd": 189,
+                "spe": 125
+              },
+              "moves": [
+                "shellsmash",
+                "acrobatics",
+                "substitute",
+                "protect"
+              ],
+              "baseAbility": "shieldsdown",
+              "item": "",
+              "pokeball": "pokeball",
+              "ability": "shieldsdown",
+              "commanding": false,
+              "reviving": false,
+              "teraType": "Rock",
+              "terastallized": ""
+            }
+          ]
+        }
+      },
+      "actualSpecies": "miniormeteor"
+    },
+    {
+      "lines": [
+        "|",
+        "|t:|1789446310",
+        "|move|p1a: Minior|Substitute|p1a: Minior",
+        "|-start|p1a: Minior|Substitute",
+        "|split|p1",
+        "|-damage|p1a: Minior|78/210",
+        "|-damage|p1a: Minior|78/210",
+        "|move|p2a: Blissey|Seismic Toss|p1a: Minior",
+        "|-end|p1a: Minior|Substitute",
+        "|",
+        "|-formechange|p1a: Minior|Minior-Blue||[from] ability: Shields Down",
+        "|upkeep",
+        "|turn|3"
+      ],
+      "request": {
+        "side": {
+          "name": "Minior test",
+          "id": "p1",
+          "pokemon": [
+            {
+              "ident": "p1: Minior",
+              "details": "Minior-Blue, L80",
+              "condition": "78/210",
+              "active": true,
+              "stats": {
+                "atk": 189,
+                "def": 125,
+                "spa": 189,
+                "spd": 125,
+                "spe": 221
+              },
+              "moves": [
+                "shellsmash",
+                "acrobatics",
+                "substitute",
+                "protect"
+              ],
+              "baseAbility": "shieldsdown",
+              "item": "",
+              "pokeball": "pokeball",
+              "ability": "shieldsdown",
+              "commanding": false,
+              "reviving": false,
+              "teraType": "Rock",
+              "terastallized": ""
+            }
+          ]
+        }
+      },
+      "actualSpecies": "miniorblue"
+    }
+  ]
+}

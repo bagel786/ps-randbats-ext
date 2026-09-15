@@ -1,0 +1,12 @@
+[
+  {
+    "antipattern": "layout-transition",
+    "name": "Layout property animation",
+    "description": "Animating width, height, padding, or margin causes layout thrash and janky performance. Use transform and opacity instead, or grid-template-rows for height animations.",
+    "severity": "warning",
+    "category": "quality",
+    "file": "/Users/safiullahbaig/Desktop/ps-randbats-ext/src/styles/content.css",
+    "line": 53,
+    "snippet": "transition: width"
+  }
+]

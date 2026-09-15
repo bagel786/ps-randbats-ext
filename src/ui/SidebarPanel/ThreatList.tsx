@@ -21,13 +21,6 @@ interface ThreatRow {
   potential: boolean; // true if from possible movepool but not yet revealed
 }
 
-function damageColor(percentMax: number, koChance: number): string {
-  if (koChance >= 1) return 'text-red-400';
-  if (percentMax >= 50) return 'text-orange-400';
-  if (percentMax >= 25) return 'text-yellow-400';
-  return 'text-gray-300';
-}
-
 export function ThreatList({ state }: Props) {
   const [showPotential, setShowPotential] = useState(false);
   const opp = state.opponentActive;
@@ -43,7 +36,7 @@ export function ThreatList({ state }: Props) {
         result: calcIncomingDamage(state, moveDisplayName(moveId)),
         potential: false,
       }))
-      .filter((r) => r.result !== null);
+      .filter(r => gen.moves.get(toId(r.moveName) as Parameters<typeof gen.moves.get>[0])?.category !== 'Status');
 
     // Potential moves: union of un-eliminated set movepools, minus revealed
     const revealedIds = new Set(opp.revealedMoves);
@@ -62,7 +55,7 @@ export function ThreatList({ state }: Props) {
         result: calcIncomingDamage(state, moveName),
         potential: true,
       }))
-      .filter((r) => r.result !== null)
+      .filter(r => gen.moves.get(toId(r.moveName) as Parameters<typeof gen.moves.get>[0])?.category !== 'Status')
       .sort((a, b) => (b.result?.percentMax ?? 0) - (a.result?.percentMax ?? 0));
 
     return [...revealedRows, ...potentialRows];
@@ -74,55 +67,22 @@ export function ThreatList({ state }: Props) {
   const revealedCount = rows.filter((r) => !r.potential).length;
   const potentialCount = rows.filter((r) => r.potential).length;
 
-  return (
-    <div className="border-t border-gray-700 mt-2 pt-2">
-      <div className="text-gray-400 text-[10px] uppercase tracking-wide mb-1">
-        Threats vs {formatSpeciesName(me.species)}
-      </div>
-
-      <div className="space-y-0.5">
-        {rows
-          .filter((r) => !r.potential)
-          .map((row) => (
-            <ThreatRowDisplay key={row.moveName} row={row} />
-          ))}
-      </div>
-
-      {potentialCount > 0 && (
-        <details
-          className="mt-1"
-          open={showPotential}
-          onToggle={(e) => setShowPotential((e.target as HTMLDetailsElement).open)}
-        >
-          <summary className="text-gray-500 text-[10px] cursor-pointer hover:text-gray-300">
-            {potentialCount} potential move{potentialCount !== 1 ? 's' : ''}
-            {revealedCount === 0 && ' (no moves seen yet)'}
-          </summary>
-          <div className="space-y-0.5 mt-1">
-            {rows
-              .filter((r) => r.potential)
-              .map((row) => (
-                <ThreatRowDisplay key={row.moveName} row={row} />
-              ))}
-          </div>
-        </details>
-      )}
-    </div>
-  );
+  return <section className="ps-section" aria-label="Incoming damage">
+    <h3>Incoming damage</h3>
+    {Object.entries(opp.boosts).some(([,value]) => value !== 0) && <p className="ps-observed ps-boosts">{Object.entries(opp.boosts).filter(([,value]) => value !== 0).map(([stat,value]) => `${value > 0 ? '+' : ''}${value} ${{atk:'Atk',def:'Def',spa:'SpA',spd:'SpD',spe:'Spe',accuracy:'Accuracy',evasion:'Evasion'}[stat]}`).join(' · ')} <span className="ps-muted">applied</span></p>}
+    <p className="ps-note">vs {formatSpeciesName(me.species)} · % of max HP</p>
+    {rows.filter(r => !r.potential).map(row => <ThreatRowDisplay key={row.moveName} row={row} />)}
+    {potentialCount > 0 && <details open={showPotential} onToggle={e => setShowPotential(e.currentTarget.open)}>
+      <summary>{potentialCount} possible moves{revealedCount === 0 ? ' · none seen' : ''}</summary>
+      {rows.filter(r => r.potential).map(row => <ThreatRowDisplay key={row.moveName} row={row} />)}
+    </details>}
+    <p className="ps-note">Unknown items and abilities are estimated. Expand a move for assumptions.</p>
+  </section>;
 }
-
-function ThreatRowDisplay({ row }: { row: ThreatRow }) {
-  const r = row.result!;
-  const color = damageColor(r.percentMax, r.koChance);
-  return (
-    <div className="flex justify-between items-center text-[11px] gap-2">
-      <span className={`truncate ${row.potential ? 'text-gray-400' : 'text-white'}`}>
-        {row.moveName}
-      </span>
-      <span className={`font-semibold whitespace-nowrap ${color}`}>
-        {r.percentMin}–{r.percentMax}%
-      </span>
-    </div>
-  );
+function ThreatRowDisplay({row}: {row: ThreatRow}) {
+  const r = row.result;
+  if (!r) return <div className="ps-unavailable"><span>{row.moveName}</span><span className="ps-note">Estimate unavailable</span></div>;
+  return <details className="ps-threat"><summary><span>{row.moveName}</span><strong>{r.percentMin}–{r.percentMax}%</strong></summary>
+    <p className="ps-note">{r.koLabel}{r.modifiers.length ? ` · ${r.modifiers.join(" · ")}` : ""}{r.notes.length ? ` · ${r.notes.join('; ')}` : ''}</p>
+  </details>;
 }
-
